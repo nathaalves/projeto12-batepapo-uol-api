@@ -66,7 +66,7 @@ server.get( '/messages', (request, response) => {
     const limit = request.query.limit;
     
     if (limit) {
-        const forSend = [...messages].splice(0, limit);
+        const forSend = [...messages].splice(messages.length - limit, limit);
         response.send(forSend);
     } else {
         response.send(messages);
