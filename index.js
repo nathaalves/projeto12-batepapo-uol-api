@@ -46,7 +46,6 @@ server.get('/participants', (request, response) => {
 server.post( '/messages', (request, response) => {
 
     const { to, text, type} = request.body;
-    
     const from = request.header("User");
 
     messages.push({
@@ -57,9 +56,29 @@ server.post( '/messages', (request, response) => {
         time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
     });
     fs.writeFileSync('messages.json', JSON.stringify(messages, null, 2));
-    
+
     response.status(201).send();
 });
+
+server.get( '/messages', (request, response) => {
+
+    const from = request.header("User");
+    const limit = request.query.limit;
+    
+    if (limit) {
+        const forSend = [...messages].splice(0, limit);
+        response.send(forSend);
+    } else {
+        response.send(messages);
+    }
+    
+});
+
+server.post( '/status', (request, response) => {
+
+    const from = request.header("User");
+    
+})
 
 
 
