@@ -12,6 +12,7 @@ let participants = JSON.parse(fs.readFileSync('participants.json', 'utf-8'));
 let messages = JSON.parse(fs.readFileSync('messages.json', 'utf-8'));
 
 server.post( '/participants', (request, response) => {
+
     const { name } = request.body;
 
     if (!name) {
@@ -34,6 +35,11 @@ server.post( '/participants', (request, response) => {
     });
     fs.writeFileSync('messages.json', JSON.stringify(messages, null, 2))
     response.status(201).send();
+})
+
+server.get('/participants', (request, response) => {
+
+    response.send(participants)
 })
 
 
