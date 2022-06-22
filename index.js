@@ -22,7 +22,7 @@ server.post( '/participants', (request, response) => {
 
     participants.push({
         name: name,
-         lastStatus: Date.now()
+        lastStatus: Date.now()
     });
     fs.writeFileSync('participants.json', JSON.stringify(participants, null, 2));
 
@@ -34,13 +34,32 @@ server.post( '/participants', (request, response) => {
         time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
     });
     fs.writeFileSync('messages.json', JSON.stringify(messages, null, 2))
+
     response.status(201).send();
 })
 
 server.get('/participants', (request, response) => {
 
-    response.send(participants)
-})
+    response.send(participants);
+});
+
+server.post( '/messages', (request, response) => {
+
+    const { to, text, type} = request.body;
+    
+    const from = request.header("User");
+
+    messages.push({
+        to,
+        from,
+        text,
+        type,
+        time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
+    });
+    fs.writeFileSync('messages.json', JSON.stringify(messages, null, 2));
+    
+    response.status(201).send();
+});
 
 
 

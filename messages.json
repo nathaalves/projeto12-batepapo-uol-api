@@ -5,5 +5,17 @@
     "text": "entra na sala...",
     "type": "status",
     "time": "22:40:23"
+  },
+  {
+    "to": "Maria",
+    "from": "Natha",
+    "time": "23:9:29"
+  },
+  {
+    "to": "Maria",
+    "from": "Natha",
+    "text": "oi sumida rs",
+    "type": "private_message",
+    "time": "23:9:49"
   }
 ]
