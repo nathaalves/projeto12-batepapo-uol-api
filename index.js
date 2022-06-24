@@ -1,46 +1,68 @@
 import express from "express";
+import { MongoClient, ObjectId } from "mongodb";
+import dotenv from 'dotenv';
 import cors from "cors";
-import fs from 'fs';
-import dayjs from "dayjs";
+import joi from "joi";
+import timeNow from './src/utils/timeNow.js';
+
+
+dotenv.config();
 
 const server = express();
-
-server.use(cors())
 server.use(express.json());
+server.use(cors());
 
-let participants = JSON.parse(fs.readFileSync('participants.json', 'utf-8'));
-let messages = JSON.parse(fs.readFileSync('messages.json', 'utf-8'));
+const client = new MongoClient(process.env.URL_CONNECT_MONGO)
+let db;
+
+client.connect().then( () => {
+    db = client.db('batepapo');
+});
 
 server.post( '/participants', (request, response) => {
 
     const { name } = request.body;
 
-    if (!name) {
-        response.status(422).send("Campo obrigatório");
-        return
-    }
-
-    participants.push({
-        name: name,
-        lastStatus: Date.now()
+    const psrticipantsSchema = joi.object({
+        name: joi.string().required()
     });
-    fs.writeFileSync('participants.json', JSON.stringify(participants, null, 2));
 
-    messages.push({
-        from: name,
-        to: 'Todos',
-        text: 'entra na sala...',
-        type: 'status',
-        time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
+    const { error } = psrticipantsSchema.validate({ name });
+
+    if ( error ) {
+        response.status(422).send(error.details[0].message);
+        return;
+    };
+
+    db.collection('participants').count( { name }, { limit: 1}).then( participant => {
+
+        if (parseInt(participant)) {
+            response.status(409).send('Usuário já cadastrado!');
+            return;
+        };
+
+        db.collection('participants').insertOne({
+            name,
+            lastStatus: Date.now()
+        });
+    
+        db.collection('messages').insertOne({
+            from: name,
+            to: 'Todos',
+            text: 'entra na sala...',
+            type: 'status',
+            time: timeNow()
+        });
+    
+        response.sendStatus(201);
     });
-    fs.writeFileSync('messages.json', JSON.stringify(messages, null, 2))
-
-    response.status(201).send();
-})
+});
 
 server.get('/participants', (request, response) => {
 
-    response.send(participants);
+    db.collection('participants').find().toArray().then( participants => {
+        response.send(participants);
+    });
 });
 
 server.post( '/messages', (request, response) => {
@@ -48,40 +70,125 @@ server.post( '/messages', (request, response) => {
     const { to, text, type} = request.body;
     const from = request.header("User");
 
-    messages.push({
-        to,
-        from,
-        text,
-        type,
-        time: `${dayjs().hour()}:${dayjs().minute()}:${dayjs().second()}`
+    const messagesSchema = joi.object({
+        to: joi.string().required(),
+        text: joi.string().required(),
+        type: joi.string().valid('message', 'private_message').required()
     });
-    fs.writeFileSync('messages.json', JSON.stringify(messages, null, 2));
 
-    response.status(201).send();
+    const { error } = messagesSchema.validate({ to, text, type });
+
+    if ( error ) {
+        console.log('ok')
+        response.sendStatus(422);
+        return;
+    };
+
+    db.collection('participants').count( { name: from }, { limit: 1}).then( participant => {
+
+        if (!parseInt(participant)) {
+            response.sendStatus(422);
+            return;
+        };
+
+        db.collection('messages').insertOne({
+            to,
+            from,
+            text,
+            type,
+            time: timeNow()
+        }).then( () => {
+            response.status(201).send();
+        });
+    });
 });
 
 server.get( '/messages', (request, response) => {
 
-    const from = request.header("User");
+    const user = request.header("User");
     const limit = request.query.limit;
+
+    const condition = 
+        { $or: [
+            { type: 'status'},
+            { to: { $in: [user, 'Todos'] }},
+            { from: user }
+        ]}
     
-    if (limit) {
-        const forSend = [...messages].splice(messages.length - limit, limit);
-        response.send(forSend);
-    } else {
-        response.send(messages);
-    }
-    
+    db.collection('messages').find( condition ).toArray().then( messages => {
+        if (limit) {
+            const forSend = [...messages].splice(messages.length - limit, limit);
+            response.send(forSend);
+        } else {
+            response.send(messages);
+        };
+    });
 });
 
-server.post( '/status', (request, response) => {
+server.post( '/status', async (request, response) => {
 
-    const from = request.header("User");
+    const user = request.header("User");
+    const participants = await db.collection('participants').find({name: user});
+
+    if (!participants) {
+        response.sendStatus(404);
+        return;
+    }
+
+    db.collection("participants").findOneAndUpdate({name: user}, { $set: {lastStatus: Date.now()}}).then( () => {
+        response.sendStatus(200);
+    });
+});
+
+server.delete('/messages/:messageId', async (request, response) => {
+
+    const user = request.header("User");
+    const messageId = request.params;
+
+    const messageIdSchema = joi.object({
+        messageId: joi.string().min(24).hex()
+    })
+
+    const { error } = messageIdSchema.validate(messageId);
+
+    if ( error ) {
+        response.sendStatus(404);
+        return;
+    }
+
+    const messageForDelete = await db.collection('messages').findOne({ _id: ObjectId(messageId)});
     
+    if (!messageForDelete) {
+        response.sendStatus(404);
+        return;
+    };
+    
+    if (messageForDelete.from !== user) {
+        response.sendStatus(401);
+        return; 
+    };
+    
+    await db.collection('messages').deleteOne({ _id: ObjectId(messageId) });
+    response.sendStatus(200);
 })
 
+setInterval( async () => {
 
-
-
+    const participants = await db.collection('participants').find({ lastStatus: {$lt: Date.now()-10000}}).toArray()
+    await db.collection("participants").deleteMany( { lastStatus: { $lt: Date.now()-10000 }});
+    
+    if (participants.length) {
+        participants.forEach( participant => {
+            db.collection('messages').insertOne({
+                from: participant.name,
+                to: 'Todos',
+                text: 'sai da sala...',
+                type: 'status',
+                time: timeNow()
+            });
+        });
+    };
+    
+}, 1115000);
 
 server.listen(5000);

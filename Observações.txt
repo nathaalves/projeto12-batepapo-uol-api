@@ -1,0 +1,14 @@
+- Corrigir Layout das horas;
+1655985886465
+
+
+
+
+
+
+dataagora - data < 10000
+
+
+100
+
+90
