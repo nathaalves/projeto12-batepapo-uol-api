@@ -3,8 +3,7 @@ import { MongoClient, ObjectId } from "mongodb";
 import dotenv from 'dotenv';
 import cors from "cors";
 import joi from "joi";
-import timeNow from './src/utils/timeNow.js';
-
+import timeNow from './utils/timeNow.js';
 
 dotenv.config();
 
@@ -79,7 +78,6 @@ server.post( '/messages', (request, response) => {
     const { error } = messagesSchema.validate({ to, text, type });
 
     if ( error ) {
-        console.log('ok')
         response.sendStatus(422);
         return;
     };
@@ -135,28 +133,28 @@ server.post( '/status', async (request, response) => {
         return;
     }
 
-    db.collection("participants").findOneAndUpdate({name: user}, { $set: {lastStatus: Date.now()}}).then( () => {
+    db.collection("participants").updateOne({name: user}, { $set: {lastStatus: Date.now()}}).then( () => {
         response.sendStatus(200);
     });
 });
 
 server.delete('/messages/:messageId', async (request, response) => {
-
+    
     const user = request.header("User");
-    const messageId = request.params;
-
+    const { messageId } = request.params;
+    
     const messageIdSchema = joi.object({
         messageId: joi.string().min(24).hex()
     })
-
-    const { error } = messageIdSchema.validate(messageId);
+    
+    const { error } = messageIdSchema.validate({ messageId });
 
     if ( error ) {
         response.sendStatus(404);
         return;
     }
-
-    const messageForDelete = await db.collection('messages').findOne({ _id: ObjectId(messageId)});
+    
+    const messageForDelete = await db.collection('messages').findOne({ _id: ObjectId(messageId) });
     
     if (!messageForDelete) {
         response.sendStatus(404);
@@ -170,8 +168,57 @@ server.delete('/messages/:messageId', async (request, response) => {
     
     await db.collection('messages').deleteOne({ _id: ObjectId(messageId) });
     response.sendStatus(200);
-})
+    
+});
 
+server.put('/messages/:messageId', async (request, response) => {
+    
+    const { to, text, type} = request.body;
+    const user = request.header("User");
+    const { messageId } = request.params;
+    
+    const messagesSchema = joi.object({
+        to: joi.string().required(),
+        text: joi.string().required(),
+        type: joi.string().valid('message', 'private_message').required()
+    });
+    
+    const { error } = messagesSchema.validate({ to, text, type });
+
+    if ( error ) {
+        
+        response.sendStatus(422);
+        return;
+    };
+
+    const participant = await db.collection('participants').find({ name: user });
+
+    if (!participant) {
+        
+        response.sendStatus(422);
+        return;
+    };
+
+    const message = await db.collection('messages').findOne({ _id: ObjectId(messageId) });
+    
+    if (message.from !== user) {
+        response.sendStatus(401);
+        return;
+    };
+
+    await db.collection('messages').updateOne({
+        _id: ObjectId(messageId)
+    }, { $set: {
+        to,
+        from: user,
+        text,
+        type,
+        time: timeNow()
+    }});
+
+    response.sendStatus(200);
+});
+ 
 setInterval( async () => {
 
     const participants = await db.collection('participants').find({ lastStatus: {$lt: Date.now()-10000}}).toArray()
@@ -189,6 +236,6 @@ setInterval( async () => {
         });
     };
     
-}, 1115000);
+}, 15000);
 
 server.listen(5000);
