@@ -5,7 +5,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "npx nodemon src/index.js"
+    "start": "npx nodemon src/index.js",
+    "build": "node build --output public"
   },
   "author": "",
   "license": "ISC",
